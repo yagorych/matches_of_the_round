@@ -9,6 +9,9 @@ import {
   View,
 } from 'react-native';
 import { MATCHES_URL } from '../config';
+import { FavoriteButton } from '../components/FavoriteButton';
+import { UpdatedAgo } from '../components/UpdatedAgo';
+import { useFavorites } from '../hooks/useFavorites';
 import type { Match, MatchesResponse, MatchStatus } from '../types/match';
 
 type Filter = 'all' | 'upcoming' | 'finished';
@@ -70,7 +73,11 @@ function getStatusLabel(status: MatchStatus): string {
   return STATUS_LABELS[status] ?? `Статус: ${status}`;
 }
 
-function MatchCard({ match }: { match: Match }) {
+function MatchCard({ match, favorite, onToggleFavorite }: {
+  match: Match;
+  favorite: boolean;
+  onToggleFavorite: () => void;
+}) {
   return (
     <View style={styles.card}>
       <View style={styles.cardTop}>
@@ -78,6 +85,7 @@ function MatchCard({ match }: { match: Match }) {
           {getStatusLabel(match.status)}{match.status === 'live' && match.minute != null ? ` · ${match.minute}′` : ''}
         </Text>
         <Text style={styles.date}>{formatStartTime(match.startsAt)}</Text>
+        <FavoriteButton active={favorite} onPress={onToggleFavorite} />
       </View>
       <View style={styles.teams}>
         <Text style={styles.team} numberOfLines={2}>{match.home.name}</Text>
@@ -97,6 +105,8 @@ export function MatchesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const { isFavorite, toggle } = useFavorites();
 
   const loadMatches = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -109,6 +119,7 @@ export function MatchesScreen() {
       const result = parseMatches(payload);
       setMatches(result.matches);
       setRound(typeof result.round === 'number' ? result.round : null);
+      setUpdatedAt(new Date());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось загрузить матчи.');
     } finally {
@@ -166,12 +177,19 @@ export function MatchesScreen() {
         <Pressable onPress={() => void loadMatches(true)} style={styles.refreshButton} accessibilityRole="button">
           <Text style={styles.refreshText}>Обновить</Text>
         </Pressable>
+        {updatedAt ? <UpdatedAgo since={updatedAt} /> : null}
       </View>
       {error ? <Text style={styles.inlineError}>{error} Показаны последние загруженные данные.</Text> : null}
       <FlatList
         data={visibleMatches}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <MatchCard match={item} />}
+        renderItem={({ item }) => (
+          <MatchCard
+            match={item}
+            favorite={isFavorite(item.id)}
+            onToggleFavorite={() => toggle(item.id)}
+          />
+        )}
         contentContainerStyle={visibleMatches.length === 0 ? styles.emptyList : styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void loadMatches(true)} />}
         ListEmptyComponent={<Text style={styles.emptyText}>Матчей в этой категории пока нет.</Text>}
